@@ -1,8 +1,8 @@
 /*
  *  AsyncReadableByteBuffer.scala
- *  (AudioFile)
+ *  (AsyncFile)
  *
- *  Copyright (c) 2004-2020 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2020 Hanns Holger Rutz. All rights reserved.
  *
  *  This software is published under the GNU Lesser General Public License v2.1+
  *
@@ -12,7 +12,6 @@
  */
 
 package de.sciss.asyncfile
-package impl
 
 import java.io.EOFException
 import java.nio.{Buffer, BufferOverflowException, ByteBuffer}
@@ -20,37 +19,36 @@ import java.nio.{Buffer, BufferOverflowException, ByteBuffer}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.math.min
 
-/** An auxiliary class that uses an internal "cache" buffer, so that one can ensure
-  * a number of bytes are available for decoding, using the `bb` field.
-  */
-final class AsyncReadableByteBuffer(ch: AsyncReadableByteChannel, capacity: Int = 128) {
-  private[this] val cap     = capacity
+/** An auxiliary class for reading ahead in an asynchronous file, by buffering. */
+final class AsyncReadableByteBuffer(ch: AsyncReadableByteChannel, capacity0: Int = 128) {
+  private[this] val cap     = capacity0
   private[this] var fileRem = ch.size - ch.position
   private[this] val arr     = new Array[Byte](cap)
 
-  /** The cache byte buffer. Byte order is big endian */
-  val bb: ByteBuffer = ByteBuffer.wrap(arr)
-  (bb: Buffer).limit(0) // initially 'empty'
+  /** byte order is big endian */
+  val buffer: ByteBuffer = ByteBuffer.wrap(arr)
+  (buffer: Buffer).limit(0) // initially 'empty'
 
   implicit val executionContext: ExecutionContext = ch.executionContext
 
   def ensure(n: Int): Future[Unit] = {
-    val lim = bb.limit()
-    val pos = bb.position()
+    val lim = buffer.limit()
+    val pos = buffer.position()
     val rem = lim - pos
     if (rem >= n) Future.successful(())
     else {
       val stop = rem + n
+      // XXX TODO should be able to grow
       if (stop > cap) throw new BufferOverflowException()
       // move remaining content to the beginning
       System.arraycopy(arr, pos, arr, 0, rem)
       val capM = min(cap, fileRem - rem).toInt
-      (bb: Buffer).position(rem).limit(capM)
+      (buffer: Buffer).position(rem).limit(capM)
       //        ais.position = 0
-      val futRead = ch.read(bb)
+      val futRead = ch.read(buffer)
       futRead.map { m =>
         if (m < n) throw new EOFException()
-        (bb: Buffer).position(0)
+        (buffer: Buffer).position(0)
         fileRem -= m
         ()
       }
@@ -58,14 +56,14 @@ final class AsyncReadableByteBuffer(ch: AsyncReadableByteChannel, capacity: Int 
   }
 
   def skip(n: Int): Unit = {
-    val lim = bb.limit()
-    val pos = bb.position()
+    val lim = buffer.limit()
+    val pos = buffer.position()
     val rem = lim - pos
     if (n <= rem) {
-      (bb: Buffer).position(pos + n)
+      (buffer: Buffer).position(pos + n)
       ()
     } else {
-      (bb: Buffer).position(0).limit(0)
+      (buffer: Buffer).position(0).limit(0)
       val skipCh = n - rem
       ch.skip(skipCh)
     }
@@ -74,11 +72,11 @@ final class AsyncReadableByteBuffer(ch: AsyncReadableByteChannel, capacity: Int 
   // synchronizes channel position with
   // current buffer position (and sets buffer limit)
   def purge(): Unit = {
-    val lim = bb.limit()
-    val pos = bb.position()
+    val lim = buffer.limit()
+    val pos = buffer.position()
     val rem = lim - pos
     if (rem > 0) {
-      (bb: Buffer).position(0).limit(0)
+      (buffer: Buffer).position(0).limit(0)
       ch.skip(-rem)
     }
   }
