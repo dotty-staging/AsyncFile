@@ -35,4 +35,16 @@ object IndexedDBFileSystem extends AsyncFileSystem {
     val path = uri.getPath
     IndexedDBFile.openWrite(path, append = append)
   }
+
+  def mkDir(uri: URI): Future[Boolean] = {
+    Future.failed(new NotImplementedError("idb.mkDir"))
+  }
+
+  def mkDirs(uri: URI): Future[Boolean] = {
+    Future.failed(new NotImplementedError("idb.mkDirs"))
+  }
+
+  def delete(uri: URI): Future[Boolean] = {
+    Future.failed(new NotImplementedError("idb.delete"))
+  }
 }

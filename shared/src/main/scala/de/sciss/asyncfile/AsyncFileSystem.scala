@@ -23,4 +23,8 @@ trait AsyncFileSystem {
 
   def openRead (uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel]
   def openWrite(uri: URI, append: Boolean = false)(implicit executionContext: ExecutionContext): Future[AsyncWritableByteChannel]
+
+  def mkDir (uri: URI): Future[Boolean]
+  def mkDirs(uri: URI): Future[Boolean]
+  def delete(uri: URI): Future[Boolean]
 }

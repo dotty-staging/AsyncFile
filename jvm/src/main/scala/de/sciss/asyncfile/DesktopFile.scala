@@ -25,17 +25,16 @@ import scala.concurrent.ExecutionContext
  * `AsyncWritableByteChannel` interface.
  */
 object DesktopFile {
-  def openRead(path: String)(implicit executionContext: ExecutionContext): DesktopFile = {
-    val p   = new File(path).toPath
+  def openRead(f: File)(implicit executionContext: ExecutionContext): DesktopFile = {
+    val p   = f.toPath
     val jch = AsynchronousFileChannel.open(p,
       StandardOpenOption.READ,
     )
-    new DesktopFileImpl(jch, path, readOnly = true)
+    new DesktopFileImpl(jch, f, readOnly = true)
   }
 
-  def openWrite(path: String, append: Boolean = false)
+  def openWrite(f: File, append: Boolean = false)
                (implicit executionContext: ExecutionContext): DesktopWritableFile = {
-    val f   = new File(path)
     val p   = f.toPath
     val jch = if (append) {
       AsynchronousFileChannel.open(p,
@@ -54,7 +53,7 @@ object DesktopFile {
         StandardOpenOption.TRUNCATE_EXISTING,
       )
     }
-    new DesktopFileImpl(jch, path, readOnly = false)
+    new DesktopFileImpl(jch, f, readOnly = false)
   }
 }
 trait DesktopFile         extends AsyncReadableByteChannel

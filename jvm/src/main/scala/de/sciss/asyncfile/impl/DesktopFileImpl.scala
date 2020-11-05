@@ -14,7 +14,7 @@
 package de.sciss.asyncfile
 package impl
 
-import java.io.IOException
+import java.io.{File, IOException}
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, CompletionHandler, ReadPendingException, WritePendingException}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
@@ -24,7 +24,7 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 /** A wrapper around `java.nio.channels.AsynchronousFileChannel` implementing the
   * `AsyncWritableByteChannel` interface.
   */
-final class DesktopFileImpl(peer: AsynchronousFileChannel, path: String, readOnly: Boolean)
+final class DesktopFileImpl(peer: AsynchronousFileChannel, f: File, readOnly: Boolean)
                            (implicit val executionContext: ExecutionContext)
     extends DesktopWritableFile with CompletionHandler[java.lang.Integer, Promise[Int]] {
 
@@ -55,7 +55,7 @@ final class DesktopFileImpl(peer: AsynchronousFileChannel, path: String, readOnl
   }
 
   def write(src: ByteBuffer): Future[Int] = {
-    if (readOnly) throw new IOException(s"File $path was opened for reading only")
+    if (readOnly) throw new IOException(s"File $f was opened for reading only")
 
     if (!pendingRef.compareAndSet(false, true)) throw new WritePendingException() // XXX TODO should distinguish read/write
 

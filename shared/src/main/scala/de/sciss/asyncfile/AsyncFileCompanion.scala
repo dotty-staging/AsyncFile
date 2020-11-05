@@ -28,15 +28,23 @@ trait AsyncFileCompanion {
   def addFileSystem(fs: AsyncFileSystem): Unit =
     fileSystemMap += (fs.scheme -> fs)
 
+  def getFileSystem(scheme: String): Option[AsyncFileSystem] =
+    if (scheme == null) None else fileSystemMap.get(scheme)
+
+  def getFileSystem(uri: URI): Option[AsyncFileSystem] =
+    getFileSystem(uri.getScheme)
+
   def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel] = {
     val scheme  = uri.getScheme
-    val fs      = fileSystemMap.getOrElse("scheme", throw new IOException(s"Unsupported file-system scheme: $scheme"))
+    val fs      = getFileSystem(scheme)
+      .getOrElse(throw new IOException(s"Unsupported file-system scheme: $scheme"))
     fs.openRead(uri)
   }
 
   def openWrite(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncWritableByteChannel] = {
     val scheme  = uri.getScheme
-    val fs      = fileSystemMap.getOrElse("scheme", throw new IOException(s"Unsupported file-system scheme: $scheme"))
+    val fs      = getFileSystem(scheme)
+      .getOrElse(throw new IOException(s"Unsupported file-system scheme: $scheme"))
     fs.openWrite(uri)
   }
 
