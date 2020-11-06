@@ -83,7 +83,7 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
     val firstStop = if (bOffStart == 0) 0 else if (bIdxStop > bIdxStart) blockSize else bOffStop
     val lastStop  = if (firstStop == 0 || bIdxStop > bIdxStart) bOffStop else 0
 
-    log.debug(s"read([pos ${dst.position()}, rem ${dst.remaining()}])")
+    log.debug(s"read([pos ${dst.position()}, rem ${dst.remaining()}]); readLen $readLen")
     log.debug(s"  posStart $posStart; posStop $posStop; bIdxStart $bIdxStart; bOffStart $bOffStart; bIdxStop $bIdxStop bOffStop $bOffStop")
 
     if (bIdxStart == cachedBlockIdx &&
@@ -113,6 +113,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
       val fut = reqToFuture(req) { _ =>
         val buf = req.result.asInstanceOf[jsta.ArrayBuffer]
         val arr = new Int8Array(buf)
+        assert (arr.length >= stop)
+
         var i   = start
         var j   = pos
         while (i < stop) {
@@ -303,6 +305,7 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
     val newSize     = if (posStop > _size) posStop else _size
 
     val futCommit = allUpdates.flatMap { _ =>
+      // XXX TODO we may want to do this less frequently
       val now = System.currentTimeMillis()
       writeMeta(path, Meta(blockSize = blockSize, length = newSize, lastModified = now))
     }

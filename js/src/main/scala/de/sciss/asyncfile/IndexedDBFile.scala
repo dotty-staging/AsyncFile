@@ -23,6 +23,7 @@ import org.scalajs.dom.raw.{IDBDatabase, IDBObjectStore, IDBRequest}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.scalajs.js
 import scala.scalajs.js.{typedarray => jsta}
+import scala.util.control.NonFatal
 
 object IndexedDBFile {
   private val BLOCK_SIZE      = 8192
@@ -39,7 +40,7 @@ object IndexedDBFile {
 
   object Meta {
     def fromArrayBuffer(b: js.typedarray.ArrayBuffer): Meta = {
-      val bi  = new jsta.Int32Array(b)
+      val bi  = new jsta.Int32Array(b)  // N.B.: little endian (OS dependent)
       val cookie: Int = bi(0)
       if (cookie != META_COOKIE) {
         throw new IOException(s"Expected cookie 0x${META_COOKIE.toHexString}, but found 0x${cookie.toHexString}")
@@ -47,8 +48,8 @@ object IndexedDBFile {
       val blockSize: Int = bi(1)
       val lastModHi: Int = bi(2)
       val lastModLo: Int = bi(3)
-      val lenHi    : Int = bi(2)
-      val lenLo    : Int = bi(3)
+      val lenHi    : Int = bi(4)
+      val lenLo    : Int = bi(5)
       val lastModified = (lastModHi .toLong << 32) | (lastModLo .toLong & 0xFFFFFFFFL)
       val length       = (lenHi     .toLong << 32) | (lenLo     .toLong & 0xFFFFFFFFL)
       Meta(blockSize = blockSize, length = length, lastModified = lastModified)
@@ -57,7 +58,7 @@ object IndexedDBFile {
   case class Meta(blockSize: Int, length: Long, lastModified: Long) {
     def toArrayBuffer: jsta.ArrayBuffer = {
       val b   = new jsta.ArrayBuffer(24)
-      val bi  = new jsta.Int32Array(b)
+      val bi  = new jsta.Int32Array(b)  // N.B.: little endian (OS dependent)
       bi(0)   = META_COOKIE
       bi(1)   = blockSize
       bi(2)   = (lastModified >> 32).toInt
@@ -83,7 +84,13 @@ object IndexedDBFile {
       pr.failure(failure(e))
     }
     req.onsuccess = { e =>
-      pr.success(success(e))
+      try {
+        val v = success(e)
+        pr.success(v)
+      } catch {
+        case NonFatal(ex) =>
+          pr.failure(ex)
+      }
     }
     pr.future
   }
