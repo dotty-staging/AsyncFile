@@ -21,7 +21,7 @@ import de.sciss.asyncfile.AsyncFile.log
 import de.sciss.asyncfile.IndexedDBFile.{Meta, READ_ONLY, READ_WRITE, STORES_FILES, STORE_FILES, reqToFuture, writeMeta}
 import org.scalajs.dom.raw.{IDBDatabase, IDBObjectStore}
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.math.min
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Int8Array
@@ -32,12 +32,17 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
                                                  readOnly: Boolean)
   extends IndexedDWritableBFile {
 
-  private[this] var _open           = true
   private[this] var _position       = 0L
   private[this] var _size           = size0
   private[this] val swapBuf         = new jsta.ArrayBuffer(blockSize)
   private[this] val swapTArray      = new Int8Array(swapBuf)
 //  private[this] val swapBB          = AudioFile.allocByteBuffer(blockSize)
+
+  private[this] var _state        = 0   // 0 - none, 1 - read, 2 - write, 3 - closed
+  private[this] var _targetState  = 0   // can only ever become 3
+  private[this] var _dirty        = false
+
+  private[this] lazy val _closedPr     = Promise[Unit]()
 
   private[this] var cachedBlockIdx  = -1
   private[this] var cacheBlock: Array[Byte] = _
@@ -68,8 +73,15 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
 
   implicit def executionContext: ExecutionContext = ExecutionContext.global
 
+  private def checkState(): Unit = _state match {
+    case 0 => ()
+    case 1 => throw new IOException(s"File $path has a pending read" )
+    case 2 => throw new IOException(s"File $path has a pending write")
+    case 3 => throw new IOException(s"File $path was already closed" )
+  }
+
   def read(dst: ByteBuffer): Future[Int] = {
-    if (!_open) throw new IOException(s"File $path was already closed")
+    checkState()
 
     val readLen = min(dst.remaining(), remaining).toInt
     if (readLen == 0) return Future.successful(readLen)
@@ -94,6 +106,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
       return Future.successful(readLen)
     }
 
+    _state = 1
+
     if (bIdxStart == cachedBlockIdx) {
       val chunk = blockSize - bOffStart
       dst.put(cacheBlock, bOffStart, chunk)
@@ -102,8 +116,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
       bOffStart  = 0
     }
 
-    val tx        = db.transaction(STORES_FILES, mode = READ_ONLY)
-    val store     = tx.objectStore(STORE_FILES)
+    val tx = db.transaction(STORES_FILES, mode = READ_ONLY)
+    implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
 
     // N.B. do not use outer variables here as this runs in
     // a future callback
@@ -163,15 +177,38 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
       (dst: Buffer).position(dstPos)
       _position = posStop
       readLen
+    } .andThen { case _ =>
+      reachedTarget()
+    }
+  }
+
+  private def flush()(implicit store: IDBObjectStore): Unit = {
+    val now       = System.currentTimeMillis()
+    _state        = 2
+    val futFlush  = writeMeta(path, Meta(blockSize = blockSize, length = _size, lastModified = now))
+    val futFlushU = futFlush.andThen { case _ =>
+      _state = _targetState
+      _dirty = false
+    }
+    _closedPr.completeWith(futFlushU)
+  }
+
+  private def reachedTarget()(implicit store: IDBObjectStore): Unit = {
+    _state = _targetState
+    if (_targetState == 3 && _dirty) {
+      flush()
     }
   }
 
   def write(src: ByteBuffer): Future[Int] = {
-    if (!_open)   throw new IOException(s"File $path was already closed")
     if (readOnly) throw new IOException(s"File $path was opened for reading only")
+    checkState()
 
     val writeLen = src.remaining()
     if (writeLen == 0) return Future.successful(writeLen)
+
+    _state  = 2
+    _dirty  = true
 
     // prepare
     val posStart  = _position
@@ -304,11 +341,13 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
     val allUpdates  = Future.sequence(txn)
     val newSize     = if (posStop > _size) posStop else _size
 
-    val futCommit = allUpdates.flatMap { _ =>
-      // XXX TODO we may want to do this less frequently
-      val now = System.currentTimeMillis()
-      writeMeta(path, Meta(blockSize = blockSize, length = newSize, lastModified = now))
-    }
+    val futCommit = allUpdates
+
+//    val futCommit = allUpdates.flatMap { _ =>
+//      // XXX TODO we may want to do this less frequently
+//      val now = System.currentTimeMillis()
+//      writeMeta(path, Meta(blockSize = blockSize, length = newSize, lastModified = now))
+//    }
 
     futCommit.map { _ =>
       assert (src.position() + writeLen == srcPos, s"${src.position()} + $writeLen != $srcPos")
@@ -316,11 +355,33 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
       _position = posStop
       _size     = newSize
       writeLen
+    } .andThen { case _ =>
+      reachedTarget()
     }
   }
 
-  def close(): Unit =
-    _open = false
+  def close(): Future[Unit] =
+    _state match {
+      case 0 =>
+        if (_dirty) {
+          _targetState = 3
+          val tx = db.transaction(STORES_FILES, mode = READ_WRITE)
+          implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
+          flush()
+          _closedPr.future
+        } else {
+          _state = 3
+          Future.unit
+        }
 
-  def isOpen: Boolean = _open
+      case 1 | 2  =>
+        _targetState = 3
+        _closedPr.future
+
+      case 3 =>
+        Future.unit
+    }
+
+  def isOpen: Boolean =
+    !(_state == 3 || _targetState == 3)
 }

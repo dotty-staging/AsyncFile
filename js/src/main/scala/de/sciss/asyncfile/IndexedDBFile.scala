@@ -163,7 +163,6 @@ object IndexedDBFile {
     val dbFut = openFileSystem()
     dbFut.flatMap { db =>
       val tx = db.transaction(STORES_FILES, mode = READ_WRITE)
-      println(s"tx: $tx")
       implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
       log.info(s"opened object store for $path")
 

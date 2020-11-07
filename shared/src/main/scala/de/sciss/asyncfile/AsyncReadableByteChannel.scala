@@ -38,7 +38,4 @@ trait AsyncReadableByteChannel extends AsyncChannel {
   implicit def executionContext: ExecutionContext
 
   def read(dst: ByteBuffer): Future[Int]
-
-  /** Closes the channel. All ongoing asynchronous I/O operations become invalid. */
-  def close(): Unit
 }

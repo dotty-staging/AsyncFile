@@ -16,10 +16,10 @@ package impl
 
 import java.io.{File, IOException}
 import java.nio.ByteBuffer
-import java.nio.channels.{AsynchronousFileChannel, CompletionHandler, ReadPendingException, WritePendingException}
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
+import java.nio.channels.{AsynchronousFileChannel, ClosedChannelException, CompletionHandler, ReadPendingException, WritePendingException}
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.control.NonFatal
 
 /** A wrapper around `java.nio.channels.AsynchronousFileChannel` implementing the
   * `AsyncWritableByteChannel` interface.
@@ -30,72 +30,109 @@ final class DesktopFileImpl(peer: AsynchronousFileChannel, f: File, readOnly: Bo
 
 //    private[this] val reqThread   = Thread.currentThread()
 
-  private[this] val posRef      = new AtomicLong(0L)
-  private[this] val pendingRef  = new AtomicBoolean(false)
+  private[this] val sync          = new AnyRef
+  private[this] var _position     = 0L
+  private[this] var _state        = 0     // 0 - none, 1 - read, 2 - write, 3 - closed
+  private[this] var _targetState  = 0
 
-  def position        : Long        = posRef.get()
-  def position_=(value: Long): Unit = posRef.set(value)
+  private[this] lazy val _closedPr     = Promise[Unit]()
 
-  def skip(len: Long): Unit = {
-    posRef.addAndGet(len)
-    ()
+  def position        : Long        = sync.synchronized { _position }
+  def position_=(value: Long): Unit = sync.synchronized { _position = value }
+
+  def skip(len: Long): Unit = sync.synchronized {
+    _position += len
+  }
+
+  private def checkState(): Unit = _state match {
+    case 0 => ()
+    case 1 => throw new ReadPendingException
+    case 2 => throw new WritePendingException
+    case 3 => throw new ClosedChannelException
   }
 
   def read(dst: ByteBuffer): Future[Int] = {
-//      require (Thread.currentThread() == reqThread)
-
-//      println(" ==> ")
-    if (!pendingRef.compareAndSet(false, true)) throw new ReadPendingException()  // XXX TODO should distinguish read/write
-
-    val pos = posRef.get()
-    val pr  = Promise[Int]()
-//      println(s"peer.read($dst, $pos, ...)")
-    peer.read(dst, pos, pr, this)
-    pr.future
+    sync.synchronized {
+      checkState()
+      _state = 1
+      val pr  = Promise[Int]()
+      peer.read(dst, _position, pr, this)
+      pr.future
+    }
   }
 
   def write(src: ByteBuffer): Future[Int] = {
     if (readOnly) throw new IOException(s"File $f was opened for reading only")
 
-    if (!pendingRef.compareAndSet(false, true)) throw new WritePendingException() // XXX TODO should distinguish read/write
-
-    val pos = posRef.get()
-    val pr  = Promise[Int]()
-    peer.write(src, pos, pr, this)
-    pr.future
-  }
-
-  def size: Long = peer.size()
-
-  def remaining: Long = size - position
-
-  def close(): Unit = {
-    if (pendingRef.get()) throw new ReadPendingException()  // XXX TODO should distinguish read/write
-    peer.close()
-  }
-
-  def isOpen: Boolean = peer.isOpen
-
-  // ---- CompletionHandler ----
-
-  def completed (res: Integer, pr: Promise[Int]): Unit = {
-//      println(s"completed ${Thread.currentThread().hashCode().toHexString}")
-    posRef.addAndGet(res.toLong)
-//      println(" <== ")
-    if (pendingRef.compareAndSet(true, false)) {
-      pr.success(res)
-    } else {
-      pr.failure(new AssertionError("No pending read"))
+    sync.synchronized {
+      checkState()
+      _state  = 2
+      val pr  = Promise[Int]()
+      peer.write(src, _position, pr, this)
+      pr.future
     }
   }
 
-  def failed(e: Throwable, pr: Promise[Int]): Unit = {
-//      println(s"failed ${Thread.currentThread().hashCode().toHexString}")
-//      println(" <== ")
-    if (pendingRef.compareAndSet(true, false)) {
+  def size: Long = sync.synchronized { peer.size() }
+
+  def remaining: Long = sync.synchronized { size - position }
+
+  def close(): Future[Unit] = sync.synchronized {
+    _state match {
+      case 0 =>
+        _state = 3
+        try {
+          peer.close()
+          Future.unit
+        } catch {
+          case NonFatal(ex) =>
+            Future.failed(ex)
+        }
+
+      case 1 | 2  =>
+        _targetState = 3
+        _closedPr.future
+
+      case 3 =>
+        Future.unit
+    }
+  }
+
+  def isOpen: Boolean = sync.synchronized {
+    !(_state == 3 || _targetState == 3)
+    // peer.isOpen
+  }
+
+  // ---- CompletionHandler ----
+
+  private def reachedTarget(): Unit = {
+    _state = _targetState
+    if (_state == 3) {
+      try {
+        peer.close()
+        _closedPr.success(())
+      } catch {
+        case NonFatal(ex) =>
+          _closedPr.failure(ex)
+      }
+    }
+  }
+
+  def completed(res: Integer, pr: Promise[Int]): Unit = sync.synchronized {
+    _position += res
+    try {
+      reachedTarget()
+      pr.success(res)
+    } catch {
+      case NonFatal(ex) => pr.failure(ex)
+    }
+  }
+
+  def failed(e: Throwable, pr: Promise[Int]): Unit = sync.synchronized {
+    try {
+      reachedTarget()
+    } finally {
       pr.failure(e)
-    } else {
-      pr.failure(new AssertionError("No pending read"))
     }
   }
 }
