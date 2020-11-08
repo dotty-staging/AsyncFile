@@ -13,7 +13,6 @@
 
 package de.sciss.asyncfile
 
-import java.io.IOException
 import java.net.URI
 
 import de.sciss.log.{Level, Logger}

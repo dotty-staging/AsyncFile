@@ -41,7 +41,7 @@ lazy val root = crossProject(JSPlatform, JVMPlatform).in(file("."))
     scalacOptions in (Compile, compile) ++= {
       val jdkGt8  = scala.util.Properties.isJavaAtLeast("9")
       val sv      = scalaVersion.value
-      val isDotty = sv.startsWith("0.") // https://github.com/lampepfl/dotty/issues/8634
+      val isDotty = sv.startsWith("3.") // https://github.com/lampepfl/dotty/issues/8634
       val sq0     = (if (!isDotty && jdkGt8) List("-release", "8") else Nil)
       if (sv.startsWith("2.12.")) sq0 else "-Wvalue-discard" :: sq0
     }, // JDK >8 breaks API; skip scala-doc
