@@ -14,6 +14,7 @@
 package de.sciss.asyncfile
 
 import java.io.IOException
+import java.net.URI
 
 import de.sciss.asyncfile.AsyncFile.log
 import de.sciss.asyncfile.impl.IndexedDBFileImpl
@@ -37,6 +38,9 @@ object IndexedDBFile {
 
   private[asyncfile] val READ_ONLY    = "readonly"
   private[asyncfile] val READ_WRITE   = "readwrite"
+
+  private def uriFromPath(path: String): URI =
+    new URI(IndexedDBFileSystem.scheme, path, null)
 
   object Meta {
     def fromArrayBuffer(b: js.typedarray.ArrayBuffer): Meta = {
@@ -118,6 +122,7 @@ object IndexedDBFile {
   }
 
   def openRead(path: String)(implicit executionContext: ExecutionContext): Future[IndexedDBFile] = {
+    log.info(s"openRead($path)")
     val dbFut = openFileSystem()
     dbFut.flatMap { db =>
       val tx = db.transaction(STORES_FILES, mode = READ_ONLY)
@@ -137,28 +142,32 @@ object IndexedDBFile {
   }
 
   def readMeta(path: String)(implicit store: IDBObjectStore): Future[Meta] = {
+    log.debug(s"readMeta($path)")
     val req = store.get(js.Array(path, KEY_META))
     reqToFuture(req, e => mkException(e)) { _ =>
-      val bMeta = req.result.asInstanceOf[jsta.ArrayBuffer]
-      val meta  = Meta.fromArrayBuffer(bMeta)
+      val bMetaOpt  = req.result.asInstanceOf[js.UndefOr[jsta.ArrayBuffer]]
+      val bMeta     = bMetaOpt.getOrElse(throw new FileNotFoundException(uriFromPath(path)))
+      val meta      = Meta.fromArrayBuffer(bMeta)
       meta
     }
   }
 
-  def updateMeta(path: String)(meta: Meta => Meta)(implicit store: IDBObjectStore,
-                                                   executionContext: ExecutionContext): Future[Unit] =
-    readMeta(path).flatMap { metaIn =>
-      val metaOut = meta(metaIn)
-      writeMeta(path, metaOut)
-    }
+//  def updateMeta(path: String)(meta: Meta => Meta)(implicit store: IDBObjectStore,
+//                                                   executionContext: ExecutionContext): Future[Unit] =
+//    readMeta(path).flatMap { metaIn =>
+//      val metaOut = meta(metaIn)
+//      writeMeta(path, metaOut)
+//    }
 
   def writeMeta(path: String, meta: Meta)(implicit store: IDBObjectStore): Future[Unit] = {
+    log.debug(s"writeMeta($path, $meta)")
     val bMeta = meta.toArrayBuffer
     val req   = store.put(key = js.Array(path, KEY_META), value = bMeta)
     reqToFuture(req)(_ => ())
   }
 
   def openWrite(path: String, append: Boolean = false): Future[IndexedDWritableBFile] = {
+    log.info(s"openWrite($path, append = $append)")
     import ExecutionContext.Implicits.global
     val dbFut = openFileSystem()
     dbFut.flatMap { db =>
@@ -174,10 +183,14 @@ object IndexedDBFile {
         }
       }
 
-      val futMeta: Future[Meta] = if (append) {
+      val futMeta0: Future[Meta] = if (append) {
         readMeta(path).recoverWith { case _ => clear() }
       } else {
         clear()
+      }
+
+      val futMeta = futMeta0.flatMap { meta =>
+        writeMeta(path, meta).map(_ => meta)
       }
 
       futMeta.map { meta =>

@@ -37,14 +37,14 @@ trait AsyncFileCompanion {
   def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel] = {
     val scheme  = uri.getScheme
     val fs      = getFileSystem(scheme)
-      .getOrElse(throw new IOException(s"Unsupported file-system scheme: $scheme"))
+      .getOrElse(throw new UnsupportedFileSystemException(uri))
     fs.openRead(uri)
   }
 
   def openWrite(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncWritableByteChannel] = {
     val scheme  = uri.getScheme
     val fs      = getFileSystem(scheme)
-      .getOrElse(throw new IOException(s"Unsupported file-system scheme: $scheme"))
+      .getOrElse(throw new UnsupportedFileSystemException(uri))
     fs.openWrite(uri)
   }
 

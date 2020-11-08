@@ -28,5 +28,8 @@ trait AsyncChannel {
     */
   def isOpen: Boolean
 
+  /** It is allowed to call this method even if there is an ongoing previous closure process.
+    * In such case the future of the ongoing closure is returned.
+    */
   def close(): Future[Unit]
 }

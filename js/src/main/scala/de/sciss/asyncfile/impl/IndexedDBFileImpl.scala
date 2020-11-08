@@ -183,10 +183,12 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
   }
 
   private def flush()(implicit store: IDBObjectStore): Unit = {
+    log.debug("flush()")
     val now       = System.currentTimeMillis()
     _state        = 2
     val futFlush  = writeMeta(path, Meta(blockSize = blockSize, length = _size, lastModified = now))
     val futFlushU = futFlush.andThen { case _ =>
+      log.debug(s"flush() complete ${_state} -> ${_targetState}")
       _state = _targetState
       _dirty = false
     }
@@ -194,6 +196,7 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
   }
 
   private def reachedTarget()(implicit store: IDBObjectStore): Unit = {
+    log.debug(s"reachedTarget() ${_state} -> ${_targetState}")
     _state = _targetState
     if (_targetState == 3 && _dirty) {
       flush()
