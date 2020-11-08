@@ -15,7 +15,7 @@ lazy val deps = new {
 }
 
 lazy val commonJvmSettings = Seq(
-  crossScalaVersions := Seq(/* "0.27.0-RC1", */ "2.13.3", "2.12.12"),
+  crossScalaVersions := Seq("3.0.0-M1", "2.13.3", "2.12.12"),
 )
 
 lazy val root = crossProject(JSPlatform, JVMPlatform).in(file("."))
@@ -28,12 +28,12 @@ lazy val root = crossProject(JSPlatform, JVMPlatform).in(file("."))
     scalaVersion       := "2.13.3",
     description        := "A library to read and write files asynchronously on the JVM and JS",
     homepage           := Some(url(s"https://github.com/Sciss/${name.value}")),
-    licenses           := Seq("LGPL v2.1+" -> url("http://www.gnu.org/licenses/lgpl-2.1.txt")),
+    licenses           := Seq("AGPL v3+" -> url("http://www.gnu.org/licenses/agpl-3.0.txt")),
     mimaPreviousArtifacts := Set("de.sciss" %% baseNameL % mimaVersion),
     initialCommands in console := """import de.sciss.synth.io._""",
     libraryDependencies ++= Seq(
       "de.sciss"      %%% "log"       % deps.main.log,
-      "org.scalatest" %%% "scalatest" % deps.test.scalaTest % Test,
+//      "org.scalatest" %%% "scalatest" % deps.test.scalaTest % Test,
     ),
     scalacOptions ++= Seq(
       "-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xlint", "-Xsource:2.13",
