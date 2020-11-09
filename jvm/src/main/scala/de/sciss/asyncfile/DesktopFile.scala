@@ -19,22 +19,20 @@ import java.nio.file.StandardOpenOption
 
 import de.sciss.asyncfile.impl.DesktopFileImpl
 
-import scala.concurrent.ExecutionContext
-
 /** A wrapper around `java.nio.channels.AsynchronousFileChannel` implementing the
  * `AsyncWritableByteChannel` interface.
  */
 object DesktopFile {
-  def openRead(f: File)(implicit executionContext: ExecutionContext): DesktopFile = {
+  def openRead(f: File)(implicit fs: DesktopFileSystem): DesktopFile = {
     val p   = f.toPath
     val jch = AsynchronousFileChannel.open(p,
       StandardOpenOption.READ,
     )
-    new DesktopFileImpl(jch, f, readOnly = true)
+    new DesktopFileImpl(fs, jch, f, readOnly = true)
   }
 
   def openWrite(f: File, append: Boolean = false)
-               (implicit executionContext: ExecutionContext): DesktopWritableFile = {
+               (implicit fs: DesktopFileSystem): DesktopWritableFile = {
     val p   = f.toPath
     val jch = if (append) {
       AsynchronousFileChannel.open(p,
@@ -53,7 +51,7 @@ object DesktopFile {
         StandardOpenOption.TRUNCATE_EXISTING,
       )
     }
-    new DesktopFileImpl(jch, f, readOnly = false)
+    new DesktopFileImpl(fs, jch, f, readOnly = false)
   }
 }
 trait DesktopFile         extends AsyncReadableByteChannel

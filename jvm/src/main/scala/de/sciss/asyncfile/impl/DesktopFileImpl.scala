@@ -18,14 +18,14 @@ import java.io.{File, IOException}
 import java.nio.ByteBuffer
 import java.nio.channels.{AsynchronousFileChannel, ClosedChannelException, CompletionHandler, ReadPendingException, WritePendingException}
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 
 /** A wrapper around `java.nio.channels.AsynchronousFileChannel` implementing the
   * `AsyncWritableByteChannel` interface.
   */
-final class DesktopFileImpl(peer: AsynchronousFileChannel, f: File, readOnly: Boolean)
-                           (implicit val executionContext: ExecutionContext)
+final class DesktopFileImpl(val fileSystem: DesktopFileSystem, peer: AsynchronousFileChannel,
+                            f: File, readOnly: Boolean)
     extends DesktopWritableFile with CompletionHandler[java.lang.Integer, Promise[Int]] {
 
 //    private[this] val reqThread   = Thread.currentThread()

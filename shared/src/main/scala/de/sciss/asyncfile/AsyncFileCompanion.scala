@@ -33,7 +33,7 @@ trait AsyncFileCompanion {
   def getFileSystemProvider(uri: URI): Option[AsyncFileSystemProvider] =
     getFileSystemProvider(uri.getScheme)
 
-  def openRead(uri: URI)(implicit fs: ExecutionContext): Future[AsyncReadableByteChannel] = {
+  def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel] = {
     val scheme  = uri.getScheme
     val fs      = getFileSystemProvider(scheme)
       .getOrElse(throw new UnsupportedFileSystemException(uri))

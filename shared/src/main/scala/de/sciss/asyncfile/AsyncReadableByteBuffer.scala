@@ -29,7 +29,7 @@ final class AsyncReadableByteBuffer(ch: AsyncReadableByteChannel, capacity0: Int
   val buffer: ByteBuffer = ByteBuffer.wrap(arr)
   (buffer: Buffer).limit(0) // initially 'empty'
 
-  implicit val executionContext: ExecutionContext = ch.executionContext
+  implicit val executionContext: ExecutionContext = ch.fileSystem.executionContext
 
   def ensure(n: Int): Future[Unit] = {
     val lim = buffer.limit()

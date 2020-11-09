@@ -20,7 +20,9 @@ import scala.collection.immutable.{Seq => ISeq}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-final class DesktopFileSystem()(implicit val executionContext: ExecutionContext) extends AsyncFileSystem {
+final class DesktopFileSystem()(implicit val executionContext: ExecutionContext)
+  extends AsyncFileSystem { self =>
+
   def provider: AsyncFileSystemProvider = DesktopFileSystemProvider
 
   def scheme: String = provider.scheme
@@ -30,7 +32,7 @@ final class DesktopFileSystem()(implicit val executionContext: ExecutionContext)
 
   def openRead(uri: URI): Future[AsyncReadableByteChannel] = {
     val f   = getFile(uri)
-    val tr  = Try(DesktopFile.openRead(f))
+    val tr  = Try(DesktopFile.openRead(f)(self))
     tr match {
       case Success(ch) => Future.successful (ch)
       case Failure(ex) => Future.failed     (ex)
@@ -39,7 +41,7 @@ final class DesktopFileSystem()(implicit val executionContext: ExecutionContext)
 
   def openWrite(uri: URI, append: Boolean = false): Future[AsyncWritableByteChannel] = {
     val f   = getFile(uri)
-    val tr  = Try(DesktopFile.openWrite(f, append = append))
+    val tr  = Try(DesktopFile.openWrite(f, append = append)(self))
     tr match {
       case Success(ch) => Future.successful (ch)
       case Failure(ex) => Future.failed     (ex)
@@ -84,7 +86,7 @@ final class DesktopFileSystem()(implicit val executionContext: ExecutionContext)
   def listDir(uri: URI): Future[ISeq[URI]] = {
     val f   = getFile(uri)
     val arr = f.listFiles()
-    val res = arr.iterator.map(_.toURI).toSeq
+    val res = arr.iterator.map(_.toURI).toVector  // .toSeq has bad type in Scala 2.12
     Future.successful(res)
   }
 

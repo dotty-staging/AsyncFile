@@ -15,7 +15,7 @@ package de.sciss.asyncfile
 
 import java.nio.ByteBuffer
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 /** Similar to a mix between `java.nio.channels.AsynchronousFileChannel` and
   * `java.nio.channels.AsynchronousByteChannel`, allowing random access positioning,
@@ -35,7 +35,7 @@ trait AsyncReadableByteChannel extends AsyncChannel {
     */
   def skip(len: Long): Unit
 
-  implicit def executionContext: ExecutionContext
+  val fileSystem: AsyncFileSystem
 
   def read(dst: ByteBuffer): Future[Int]
 }

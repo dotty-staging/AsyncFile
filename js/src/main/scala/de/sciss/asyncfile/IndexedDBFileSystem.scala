@@ -13,58 +13,58 @@
 
 package de.sciss.asyncfile
 
-import java.io.File
 import java.net.URI
 
 import de.sciss.asyncfile.IndexedDBFile.{READ_ONLY, STORES_FILES, STORE_FILES}
-import org.scalajs.dom.raw.IDBObjectStore
+import org.scalajs.dom.raw.{IDBDatabase, IDBObjectStore}
 
 import scala.collection.immutable.{Seq => ISeq}
 import scala.concurrent.{ExecutionContext, Future}
 
-object IndexedDBFileSystem extends AsyncFileSystem {
-  final val scheme  = "idb"
-  final val name    = "IndexedDB File System"
+final class IndexedDBFileSystem(private[asyncfile] val db: IDBDatabase)
+                               (implicit val executionContext: ExecutionContext)
+  extends AsyncFileSystem { self =>
 
-  def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel] = {
+  def scheme: String = IndexedDBFileSystemProvider.scheme
+  def name  : String = IndexedDBFileSystemProvider.name
+
+  def provider: AsyncFileSystemProvider = IndexedDBFileSystemProvider
+
+  def release(): Unit =
+    db.close()
+
+  def openRead(uri: URI): Future[AsyncReadableByteChannel] = {
     val _scheme = uri.getScheme
     if (_scheme != scheme) throw new IllegalArgumentException(s"Scheme ${_scheme} is not $scheme")
-    IndexedDBFile.openRead(uri)
+    IndexedDBFile.openRead(uri)(self)
   }
 
-  def openWrite(uri: URI, append: Boolean = false)
-               (implicit executionContext: ExecutionContext): Future[AsyncWritableByteChannel] = {
+  def openWrite(uri: URI, append: Boolean = false): Future[AsyncWritableByteChannel] = {
     val _scheme = uri.getScheme
     if (_scheme != scheme) throw new IllegalArgumentException(s"Scheme ${_scheme} is not $scheme")
-    IndexedDBFile.openWrite(uri, append = append)
+    IndexedDBFile.openWrite(uri, append = append)(self)
   }
 
-  def mkDir(uri: URI)(implicit executionContext: ExecutionContext): Future[Unit] = {
+  def mkDir(uri: URI): Future[Unit] = {
     Future.failed(new NotImplementedError("idb.mkDir"))
   }
 
-  def mkDirs(uri: URI)(implicit executionContext: ExecutionContext): Future[Unit] = {
+  def mkDirs(uri: URI): Future[Unit] = {
     Future.failed(new NotImplementedError("idb.mkDirs"))
   }
 
-  def delete(uri: URI)(implicit executionContext: ExecutionContext): Future[Unit] = {
+  def delete(uri: URI): Future[Unit] = {
     Future.failed(new NotImplementedError("idb.delete"))
   }
 
-  def info(uri: URI)(implicit executionContext: ExecutionContext): Future[FileInfo] = {
-    for {
-      db <- IndexedDBFile.openFileSystem()
-      tx = db.transaction(STORES_FILES, mode = READ_ONLY)
-      meta <- {
-        implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
-        IndexedDBFile.readMeta(uri)
-      }
-    } yield {
-      meta.info
-    }
+  def info(uri: URI): Future[FileInfo] = {
+    val tx = db.transaction(STORES_FILES, mode = READ_ONLY)
+    implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
+    val futMeta = IndexedDBFile.readMeta(uri)
+    futMeta.map(_.info)
   }
 
-  def listDir(uri: URI)(implicit executionContext: ExecutionContext): Future[ISeq[URI]] = {
+  def listDir(uri: URI): Future[ISeq[URI]] = {
     Future.failed(new NotImplementedError("idb.listDir"))
   }
 }

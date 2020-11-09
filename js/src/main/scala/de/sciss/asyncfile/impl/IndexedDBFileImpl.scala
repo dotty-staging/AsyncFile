@@ -19,16 +19,17 @@ import java.nio.{Buffer, ByteBuffer}
 
 import de.sciss.asyncfile.AsyncFile.log
 import de.sciss.asyncfile.IndexedDBFile.{Meta, READ_ONLY, READ_WRITE, STORES_FILES, STORE_FILES, reqToFuture, writeMeta}
-import org.scalajs.dom.raw.{IDBDatabase, IDBObjectStore}
+import org.scalajs.dom.raw.IDBObjectStore
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{Future, Promise}
 import scala.math.min
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Int8Array
 import scala.scalajs.js.{typedarray => jsta}
 
 // XXX TODO: caching is not yet implemented
-private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, readOnly: Boolean)
+private[asyncfile] final class IndexedDBFileImpl(val fileSystem: IndexedDBFileSystem,
+                                                 meta0: Meta, readOnly: Boolean)
   extends IndexedDWritableBFile {
 
   private[this] val blockSize       = meta0.blockSize
@@ -71,8 +72,6 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
     */
   def skip(len: Long): Unit =
     position += len
-
-  implicit def executionContext: ExecutionContext = ExecutionContext.global
 
   private def checkState(): Unit = _state match {
     case 0 => ()
@@ -117,6 +116,7 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
       bOffStart  = 0
     }
 
+    val db = fileSystem.db
     val tx = db.transaction(STORES_FILES, mode = READ_ONLY)
     implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
 
@@ -170,6 +170,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
       bIdx       += 1
     }
 
+    import fileSystem.executionContext
+
     // wrap up
     val allUpdates  = Future.sequence(txn)
 
@@ -189,6 +191,9 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
     _state        = 2
     val metaNow   = meta0.copy(info = meta0.info.copy(size = _size, lastModified = now))
     val futFlush  = writeMeta(metaNow)
+
+    import fileSystem.executionContext
+
     val futFlushU = futFlush.andThen { case _ =>
       log.debug(s"flush() complete ${_state} -> ${_targetState}")
       _state = _targetState
@@ -209,6 +214,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
     if (readOnly) throw new IOException(s"File $path was opened for reading only")
     checkState()
 
+    import fileSystem.executionContext
+
     val writeLen = src.remaining()
     if (writeLen == 0) return Future.successful(writeLen)
 
@@ -228,7 +235,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
     log.debug(s"write([pos ${src.position()}, rem ${src.remaining()}])")
     log.debug(s"  posStart $posStart; posStop $posStop; bIdxStart $bIdxStart; bOffStart $bOffStart; bIdxStop $bIdxStop bOffStop $bOffStop")
 
-    val tx        = db.transaction(STORES_FILES, mode = READ_WRITE)
+    val db  = fileSystem.db
+    val tx  = db.transaction(STORES_FILES, mode = READ_WRITE)
     implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
 
     // N.B. do not use outer variables here as this runs in
@@ -280,6 +288,9 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
 
     def updateSlice(idx: Int, pos: Int, start: Int, stop: Int): Future[Unit] = {
       log.debug(s"updateSlice($idx, $start, $stop)")
+
+      import fileSystem.executionContext
+
       val reqRead = store.get(key(idx))
       val futArr  = reqToFuture(reqRead) { _ =>
 //        val arrOld    = reqRead.result.asInstanceOf[Int8Array]
@@ -297,6 +308,7 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
         arrNew.set(arrSrc, start)
         arrNew
       }
+
       futArr.flatMap { arrNew =>
         val reqWrite = store.put(key = key(idx), value = arrNew.buffer)
         reqToFuture(reqWrite)(_ => ())
@@ -370,6 +382,7 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, r
       case 0 =>
         if (_dirty) {
           _targetState = 3
+          val db = fileSystem.db
           val tx = db.transaction(STORES_FILES, mode = READ_WRITE)
           implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
           flush()
