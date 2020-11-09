@@ -55,12 +55,12 @@ final class AsyncReadableByteBuffer(ch: AsyncReadableByteChannel, capacity0: Int
     }
   }
 
-  def skip(n: Int): Unit = {
+  def skip(n: Long): Unit = {
     val lim = buffer.limit()
     val pos = buffer.position()
     val rem = lim - pos
     if (n <= rem) {
-      (buffer: Buffer).position(pos + n)
+      (buffer: Buffer).position((pos + n).toInt)
       ()
     } else {
       (buffer: Buffer).position(0).limit(0)

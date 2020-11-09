@@ -20,31 +20,31 @@ import de.sciss.log.{Level, Logger}
 import scala.concurrent.{ExecutionContext, Future}
 
 trait AsyncFileCompanion {
-  private var fileSystemMap: Map[String, AsyncFileSystem] = Map.empty
+  private var fileSystemMap: Map[String, AsyncFileSystemProvider] = Map.empty
 
-  def fileSystems: Iterable[AsyncFileSystem] = fileSystemMap.values
+  def fileSystemProviders: Iterable[AsyncFileSystemProvider] = fileSystemMap.values
 
-  def addFileSystem(fs: AsyncFileSystem): Unit =
+  def addFileSystemProvider(fs: AsyncFileSystemProvider): Unit =
     fileSystemMap += (fs.scheme -> fs)
 
-  def getFileSystem(scheme: String): Option[AsyncFileSystem] =
+  def getFileSystemProvider(scheme: String): Option[AsyncFileSystemProvider] =
     if (scheme == null) None else fileSystemMap.get(scheme)
 
-  def getFileSystem(uri: URI): Option[AsyncFileSystem] =
-    getFileSystem(uri.getScheme)
+  def getFileSystemProvider(uri: URI): Option[AsyncFileSystemProvider] =
+    getFileSystemProvider(uri.getScheme)
 
-  def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel] = {
+  def openRead(uri: URI)(implicit fs: ExecutionContext): Future[AsyncReadableByteChannel] = {
     val scheme  = uri.getScheme
-    val fs      = getFileSystem(scheme)
+    val fs      = getFileSystemProvider(scheme)
       .getOrElse(throw new UnsupportedFileSystemException(uri))
-    fs.openRead(uri)
+    fs.obtain().flatMap(_.openRead(uri))
   }
 
   def openWrite(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncWritableByteChannel] = {
     val scheme  = uri.getScheme
-    val fs      = getFileSystem(scheme)
+    val fs      = getFileSystemProvider(scheme)
       .getOrElse(throw new UnsupportedFileSystemException(uri))
-    fs.openWrite(uri)
+    fs.obtain().flatMap(_.openWrite(uri))
   }
 
   private final val PROP_LOG_LEVEL = "de.sciss.asyncfile.log-level"

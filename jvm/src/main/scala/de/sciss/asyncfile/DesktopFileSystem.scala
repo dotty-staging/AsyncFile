@@ -13,17 +13,22 @@
 
 package de.sciss.asyncfile
 
-import java.io.File
+import java.io.{File, IOException}
 import java.net.URI
 
+import scala.collection.immutable.{Seq => ISeq}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-object DesktopFileSystem extends AsyncFileSystem {
-  final val scheme  = "file"
-  final val name    = "Desktop File System"
+final class DesktopFileSystem()(implicit val executionContext: ExecutionContext) extends AsyncFileSystem {
+  def provider: AsyncFileSystemProvider = DesktopFileSystemProvider
 
-  def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[AsyncReadableByteChannel] = {
+  def scheme: String = provider.scheme
+  def name  : String = provider.name
+
+  def release(): Unit = ()
+
+  def openRead(uri: URI): Future[AsyncReadableByteChannel] = {
     val f   = getFile(uri)
     val tr  = Try(DesktopFile.openRead(f))
     tr match {
@@ -32,8 +37,7 @@ object DesktopFileSystem extends AsyncFileSystem {
     }
   }
 
-  def openWrite(uri: URI, append: Boolean = false)
-               (implicit executionContext: ExecutionContext): Future[AsyncWritableByteChannel] = {
+  def openWrite(uri: URI, append: Boolean = false): Future[AsyncWritableByteChannel] = {
     val f   = getFile(uri)
     val tr  = Try(DesktopFile.openWrite(f, append = append))
     tr match {
@@ -42,29 +46,47 @@ object DesktopFileSystem extends AsyncFileSystem {
     }
   }
 
-  def mkDir(uri: URI): Future[Boolean] = {
+  def mkDir(uri: URI): Future[Unit] = {
     val f   = getFile(uri)
     val res = f.mkdir()
-    Future.successful(res)
+    if (res) Future.unit else Future.failed(new IOException(s"Could not create directory $uri"))
   }
 
-  def mkDirs(uri: URI): Future[Boolean] = {
+  def mkDirs(uri: URI): Future[Unit] = {
     val f   = getFile(uri)
     val res = f.mkdirs()
-    Future.successful(res)
+    if (res) Future.unit else Future.failed(new IOException(s"Could not create directories $uri"))
   }
 
-  def delete(uri: URI): Future[Boolean] = {
+  def delete(uri: URI): Future[Unit] = {
     val f   = getFile(uri)
     val res = f.delete()
-    Future.successful(res)
+    if (res) Future.unit else Future.failed(new IOException(s"Could not delete file $uri"))
   }
 
-//  private def getPath(uri: URI): String = {
-//    val _scheme = uri.getScheme
-//    if (_scheme != scheme) throw new IllegalArgumentException(s"Scheme ${_scheme} is not $scheme")
-//    uri.getPath
-//  }
+  def info(uri: URI): Future[FileInfo] = {
+    val f = getFile(uri)
+    if (f.exists()) {
+      var flags   = 0
+      if (f.isFile      ) flags |= FileInfo.IS_FILE
+      if (f.isDirectory ) flags |= FileInfo.IS_DIRECTORY
+      if (f.isHidden    ) flags |= FileInfo.IS_HIDDEN
+      if (f.canRead     ) flags |= FileInfo.CAN_READ
+      if (f.canWrite    ) flags |= FileInfo.CAN_WRITE
+      if (f.canExecute  ) flags |= FileInfo.CAN_EXECUTE
+      val info = FileInfo(uri, flags = flags, lastModified = f.lastModified(), size = f.length())
+      Future.successful(info)
+    } else {
+      Future.failed(new FileNotFoundException(uri))
+    }
+  }
+
+  def listDir(uri: URI): Future[ISeq[URI]] = {
+    val f   = getFile(uri)
+    val arr = f.listFiles()
+    val res = arr.iterator.map(_.toURI).toSeq
+    Future.successful(res)
+  }
 
   private def getFile(uri: URI): File = new File(uri)
 }

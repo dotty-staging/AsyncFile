@@ -43,7 +43,7 @@ object IndexedDBFile {
     new URI(IndexedDBFileSystem.scheme, path, null)
 
   object Meta {
-    def fromArrayBuffer(b: js.typedarray.ArrayBuffer): Meta = {
+    def fromArrayBuffer(uri: URI, b: js.typedarray.ArrayBuffer): Meta = {
       val bi  = new jsta.Int32Array(b)  // N.B.: little endian (OS dependent)
       val cookie: Int = bi(0)
       if (cookie != META_COOKIE) {
@@ -52,23 +52,29 @@ object IndexedDBFile {
       val blockSize: Int = bi(1)
       val lastModHi: Int = bi(2)
       val lastModLo: Int = bi(3)
-      val lenHi    : Int = bi(4)
-      val lenLo    : Int = bi(5)
-      val lastModified = (lastModHi .toLong << 32) | (lastModLo .toLong & 0xFFFFFFFFL)
-      val length       = (lenHi     .toLong << 32) | (lenLo     .toLong & 0xFFFFFFFFL)
-      Meta(blockSize = blockSize, length = length, lastModified = lastModified)
+      val szHi     : Int = bi(4)
+      val szLo     : Int = bi(5)
+      val flags    : Int = bi(6)
+      val lastModified  = (lastModHi .toLong << 32) | (lastModLo .toLong & 0xFFFFFFFFL)
+      val size          = (szHi      .toLong << 32) | (szLo      .toLong & 0xFFFFFFFFL)
+      val info = FileInfo(
+        uri, flags = flags, lastModified = lastModified, size = size
+      )
+      Meta(blockSize = blockSize, info = info)
     }
   }
-  case class Meta(blockSize: Int, length: Long, lastModified: Long) {
+  case class Meta(blockSize: Int, info: FileInfo) {
     def toArrayBuffer: jsta.ArrayBuffer = {
       val b   = new jsta.ArrayBuffer(24)
       val bi  = new jsta.Int32Array(b)  // N.B.: little endian (OS dependent)
       bi(0)   = META_COOKIE
       bi(1)   = blockSize
+      import info._
       bi(2)   = (lastModified >> 32).toInt
       bi(3)   =  lastModified       .toInt
-      bi(4)   = (length       >> 32).toInt
-      bi(5)   =  length             .toInt
+      bi(4)   = (size         >> 32).toInt
+      bi(5)   =  size               .toInt
+      bi(6)   = flags
       b
     }
   }
@@ -99,7 +105,7 @@ object IndexedDBFile {
     pr.future
   }
 
-  private def openFileSystem(): Future[IDBDatabase] = {
+  private[asyncfile] def openFileSystem(): Future[IDBDatabase] = {
     val req = dom.window.indexedDB.open(DB_FILE_SYSTEM, VERSION)
 
     req.onupgradeneeded = { _ =>
@@ -121,19 +127,18 @@ object IndexedDBFile {
     }
   }
 
-  def openRead(path: String)(implicit executionContext: ExecutionContext): Future[IndexedDBFile] = {
+  def openRead(uri: URI)(implicit executionContext: ExecutionContext): Future[IndexedDBFile] = {
+    val path = uri.getPath
     log.info(s"openRead($path)")
     val dbFut = openFileSystem()
     dbFut.flatMap { db =>
       val tx = db.transaction(STORES_FILES, mode = READ_ONLY)
       implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
-      val futMeta = readMeta(path)
+      val futMeta = readMeta(uri)
       futMeta.map { meta =>
         val ch    = new IndexedDBFileImpl(
           db        = db,
-          path      = path,
-          blockSize = meta.blockSize,
-          size0     = meta.length,
+          meta0     = meta,
           readOnly  = true,
         )
         ch
@@ -141,13 +146,14 @@ object IndexedDBFile {
     }
   }
 
-  def readMeta(path: String)(implicit store: IDBObjectStore): Future[Meta] = {
+  def readMeta(uri: URI)(implicit store: IDBObjectStore): Future[Meta] = {
+    val path = uri.getPath
     log.debug(s"readMeta($path)")
     val req = store.get(js.Array(path, KEY_META))
     reqToFuture(req, e => mkException(e)) { _ =>
       val bMetaOpt  = req.result.asInstanceOf[js.UndefOr[jsta.ArrayBuffer]]
       val bMeta     = bMetaOpt.getOrElse(throw new FileNotFoundException(uriFromPath(path)))
-      val meta      = Meta.fromArrayBuffer(bMeta)
+      val meta      = Meta.fromArrayBuffer(uri, bMeta)
       meta
     }
   }
@@ -159,14 +165,16 @@ object IndexedDBFile {
 //      writeMeta(path, metaOut)
 //    }
 
-  def writeMeta(path: String, meta: Meta)(implicit store: IDBObjectStore): Future[Unit] = {
+  def writeMeta(meta: Meta)(implicit store: IDBObjectStore): Future[Unit] = {
+    val path = meta.info.uri.getPath
     log.debug(s"writeMeta($path, $meta)")
     val bMeta = meta.toArrayBuffer
     val req   = store.put(key = js.Array(path, KEY_META), value = bMeta)
     reqToFuture(req)(_ => ())
   }
 
-  def openWrite(path: String, append: Boolean = false): Future[IndexedDWritableBFile] = {
+  def openWrite(uri: URI, append: Boolean = false): Future[IndexedDWritableBFile] = {
+    val path = uri.getPath
     log.info(s"openWrite($path, append = $append)")
     import ExecutionContext.Implicits.global
     val dbFut = openFileSystem()
@@ -179,26 +187,30 @@ object IndexedDBFile {
         val reqClear = store.clear()
         reqToFuture(reqClear) { _ =>
           log.info("creating new initial meta data")
-          Meta(blockSize = BLOCK_SIZE, length = 0L, lastModified = System.currentTimeMillis())
+          val fi = FileInfo(
+            uri           = uri,
+            flags         = FileInfo.IS_FILE | FileInfo.CAN_READ | FileInfo.CAN_WRITE,
+            lastModified  = System.currentTimeMillis(),
+            size          = 0L,
+          )
+          Meta(blockSize = BLOCK_SIZE, info = fi)
         }
       }
 
       val futMeta0: Future[Meta] = if (append) {
-        readMeta(path).recoverWith { case _ => clear() }
+        readMeta(uri).recoverWith { case _ => clear() }
       } else {
         clear()
       }
 
       val futMeta = futMeta0.flatMap { meta =>
-        writeMeta(path, meta).map(_ => meta)
+        writeMeta(meta).map(_ => meta)
       }
 
       futMeta.map { meta =>
         new IndexedDBFileImpl(
           db        = db,
-          path      = path,
-          blockSize = meta.blockSize,
-          size0     = meta.length,
+          meta0     = meta,
           readOnly  = false,
         )
       }

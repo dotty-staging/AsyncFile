@@ -14,5 +14,5 @@
 package de.sciss.asyncfile
 
 object AsyncFile extends AsyncFileCompanion {
-  addFileSystem(IndexedDBFileSystem)
+  addFileSystemProvider(IndexedDBFileSystem)
 }

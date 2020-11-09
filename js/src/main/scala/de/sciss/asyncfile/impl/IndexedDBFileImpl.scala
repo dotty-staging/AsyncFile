@@ -28,12 +28,13 @@ import scala.scalajs.js.typedarray.Int8Array
 import scala.scalajs.js.{typedarray => jsta}
 
 // XXX TODO: caching is not yet implemented
-private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, blockSize: Int, size0: Long,
-                                                 readOnly: Boolean)
+private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, meta0: Meta, readOnly: Boolean)
   extends IndexedDWritableBFile {
 
+  private[this] val blockSize       = meta0.blockSize
+  private[this] val path            = meta0.info.uri.getPath
   private[this] var _position       = 0L
-  private[this] var _size           = size0
+  private[this] var _size           = meta0.info.size
   private[this] val swapBuf         = new jsta.ArrayBuffer(blockSize)
   private[this] val swapTArray      = new Int8Array(swapBuf)
 //  private[this] val swapBB          = AudioFile.allocByteBuffer(blockSize)
@@ -186,7 +187,8 @@ private[asyncfile] final class IndexedDBFileImpl(db: IDBDatabase, path: String, 
     log.debug("flush()")
     val now       = System.currentTimeMillis()
     _state        = 2
-    val futFlush  = writeMeta(path, Meta(blockSize = blockSize, length = _size, lastModified = now))
+    val metaNow   = meta0.copy(info = meta0.info.copy(size = _size, lastModified = now))
+    val futFlush  = writeMeta(metaNow)
     val futFlushU = futFlush.andThen { case _ =>
       log.debug(s"flush() complete ${_state} -> ${_targetState}")
       _state = _targetState
