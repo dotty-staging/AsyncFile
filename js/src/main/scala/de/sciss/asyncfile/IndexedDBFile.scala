@@ -63,7 +63,7 @@ object IndexedDBFile {
   }
   case class Meta(blockSize: Int, info: FileInfo) {
     def toArrayBuffer: jsta.ArrayBuffer = {
-      val b   = new jsta.ArrayBuffer(24)
+      val b   = new jsta.ArrayBuffer(7 * 4)
       val bi  = new jsta.Int32Array(b)  // N.B.: little endian (OS dependent)
       bi(0)   = META_COOKIE
       bi(1)   = blockSize
