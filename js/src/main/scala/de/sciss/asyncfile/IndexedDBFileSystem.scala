@@ -33,38 +33,40 @@ final class IndexedDBFileSystem(private[asyncfile] val db: IDBDatabase)
   def release(): Unit =
     db.close()
 
-  def openRead(uri: URI): Future[AsyncReadableByteChannel] = {
+  private def requireScheme(uri: URI): Unit = {
     val _scheme = uri.getScheme
     if (_scheme != scheme) throw new IllegalArgumentException(s"Scheme ${_scheme} is not $scheme")
+  }
+
+  def openRead(uri: URI): Future[AsyncReadableByteChannel] = {
+    requireScheme(uri)
     IndexedDBFile.openRead(uri)(self)
   }
 
   def openWrite(uri: URI, append: Boolean = false): Future[AsyncWritableByteChannel] = {
-    val _scheme = uri.getScheme
-    if (_scheme != scheme) throw new IllegalArgumentException(s"Scheme ${_scheme} is not $scheme")
+    requireScheme(uri)
     IndexedDBFile.openWrite(uri, append = append)(self)
   }
 
-  def mkDir(uri: URI): Future[Unit] = {
-    Future.failed(new NotImplementedError("idb.mkDir"))
-  }
+  def mkDir(uri: URI): Future[Unit] =
+    Future.failed(new NotImplementedError("idb.mkDir")) // XXX TODO
 
-  def mkDirs(uri: URI): Future[Unit] = {
-    Future.failed(new NotImplementedError("idb.mkDirs"))
-  }
+  def mkDirs(uri: URI): Future[Unit] =
+    Future.failed(new NotImplementedError("idb.mkDirs")) // XXX TODO
 
   def delete(uri: URI): Future[Unit] = {
-    Future.failed(new NotImplementedError("idb.delete"))
+    requireScheme(uri)
+    IndexedDBFile.delete(uri)(this)
   }
 
   def info(uri: URI): Future[FileInfo] = {
+    requireScheme(uri)
     val tx = db.transaction(STORES_FILES, mode = READ_ONLY)
     implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
     val futMeta = IndexedDBFile.readMeta(uri)
     futMeta.map(_.info)
   }
 
-  def listDir(uri: URI): Future[ISeq[URI]] = {
-    Future.failed(new NotImplementedError("idb.listDir"))
-  }
+  def listDir(uri: URI): Future[ISeq[URI]] =
+    Future.failed(new NotImplementedError("idb.listDir")) // XXX TODO
 }

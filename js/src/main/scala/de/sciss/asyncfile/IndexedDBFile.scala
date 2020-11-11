@@ -19,7 +19,7 @@ import java.net.URI
 import de.sciss.asyncfile.AsyncFile.log
 import de.sciss.asyncfile.impl.IndexedDBFileImpl
 import org.scalajs.dom
-import org.scalajs.dom.raw.{IDBObjectStore, IDBRequest}
+import org.scalajs.dom.raw.{IDBKeyRange, IDBObjectStore, IDBRequest}
 
 import scala.concurrent.{Future, Promise}
 import scala.scalajs.js
@@ -147,6 +147,18 @@ object IndexedDBFile {
     val bMeta = meta.toArrayBuffer
     val req   = store.put(key = js.Array(path, KEY_META), value = bMeta)
     reqToFuture(req)(_ => ())
+  }
+
+  def delete(uri: URI)(implicit fs: IndexedDBFileSystem): Future[Unit] = {
+    import fs.{db, executionContext}
+    val path  = uri.getPath
+    val tx    = db.transaction(STORES_FILES, mode = READ_WRITE)
+    implicit val store: IDBObjectStore = tx.objectStore(STORE_FILES)
+    val reqDelMeta = store.delete(js.Array(path, KEY_META))
+    val reqDelData = store.delete(IDBKeyRange.bound(js.Array(path, 0), js.Array(path, Int.MaxValue)))
+    val futDelMeta = reqToFuture(reqDelMeta)(_ => ())
+    val futDelData = reqToFuture(reqDelData)(_ => ())
+    futDelMeta.flatMap(_ => futDelData)
   }
 
   def openWrite(uri: URI, append: Boolean = false)(implicit fs: IndexedDBFileSystem): Future[IndexedDWritableBFile] = {
