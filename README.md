@@ -37,9 +37,18 @@ mapping to `java.nio.channels.AsynchronousFileChannel`, while introducing a new 
 a virtual file system backed by IndexedDB, thus supporting client-side Scala.js in the browser. New file systems
 can be registered using `AsyncFile.addFileSystem`.
 
-On the desktop, you can use `DesktopFileSystem.openRead(uri)` and `DesktopFileSystem.openWrite(uri)`, or directly
-call `DesktopFile.openRead(path)` and `DesktopFile.openWrite(path)`. 
-In the browser, you can use `IndexedDBFileSystem.openRead(uri)` and `IndexedDBFileSystem.openWrite(uri)`, or directly
-call `IndexedDBFile.openRead(path)` and `DesktopFile.openWrite(path)`.
+You obtain a file system for scheme by calling `AsyncFile.getFileSystemProvider(scheme)` where is `"file"` or `"idb"`,
+for example. It is possible to register other file system providers. Once you have the file system, you can 
+use—in a platform neutral way—`fs.openRead(uri)` and `fs.openWrite(uri)` to gain access to a file to be read or 
+written.
+ 
+You can also directly call `DesktopFile.openRead(file)` and `DesktopFile.openWrite(file)` on the desktop, and
+in the browser, you can directly use `IndexedDBFile.openRead(uri)` and `IndexedDBFile.openWrite(uri)`.
 
-In a platform neutral way, you can write `AsyncFile.openRead(uri)` and `AsyncFile.openWrite(uri)`.
+## limitations
+
+- `IndexedDBFileSystem` currently does not implement directory functionality, thus `.listDir`, `.mkDirs` etc.
+  do not work and return failed futures.
+- `IndexedDBFileSystem` has a fixed block size and does not yet use caching. Performance improvements are to be
+  expected in future versions with larger block sizes and in-memory caching in place.
+  
