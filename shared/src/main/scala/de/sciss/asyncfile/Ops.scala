@@ -78,7 +78,7 @@ object Ops {
       val parent0 = uri.normalize().getPath
       val parentS = if (parent0.isEmpty || parent0.endsWith("/")) parent0 else s"$parent0/"
       val path    = s"$parentS$sub"
-      new URI("idb", path, null)
+      new URI(uri.getScheme, path, null)
     }
   }
 }
