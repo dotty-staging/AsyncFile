@@ -1,7 +1,7 @@
 lazy val baseName  = "AsyncFile"
 lazy val baseNameL = baseName.toLowerCase
 
-lazy val projectVersion = "0.1.1"
+lazy val projectVersion = "0.1.2"
 lazy val mimaVersion    = "0.1.0"
 
 lazy val deps = new {
@@ -10,7 +10,7 @@ lazy val deps = new {
     val log       = "0.1.1"
   }
   val test = new {
-    val scalaTest = "3.2.2"
+    val scalaTest = "3.2.3"
   }
 }
 
@@ -33,7 +33,7 @@ lazy val root = crossProject(JSPlatform, JVMPlatform).in(file("."))
     initialCommands in console := """import de.sciss.synth.io._""",
     libraryDependencies ++= Seq(
       "de.sciss"      %%% "log"       % deps.main.log,
-//      "org.scalatest" %%% "scalatest" % deps.test.scalaTest % Test,
+      "org.scalatest" %%% "scalatest" % deps.test.scalaTest % Test,
     ),
     scalacOptions ++= Seq(
       "-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xlint", "-Xsource:2.13",

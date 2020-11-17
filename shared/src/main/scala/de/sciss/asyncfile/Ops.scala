@@ -21,55 +21,58 @@ object Ops {
 
     def name: String = {
       val p = uri.normalize().getPath
-      val i = p.lastIndexOf('/') + 1
-      p.substring(i)
+      val j = if (p.endsWith("/")) p.length - 1 else p.length
+      val i = p.lastIndexOf('/', j - 1) + 1
+      p.substring(i, j)
     }
 
     def base: String = {
-      val p = uri.normalize().getPath
-      val i = p.lastIndexOf('/') + 1
-      val n = p.substring(i)
-      val j = n.lastIndexOf('.')
-      if (j < 0) n else n.substring(0, j)
+      val n = name
+      val k = n.lastIndexOf('.')
+      if (k < 0) n else n.substring(0, k)
     }
 
     def extL: String = {
-      val p   = uri.normalize().getPath
-      val i   = p.lastIndexOf('/') + 1
-      val n   = p.substring(i)
-      val j   = n.lastIndexOf('.')
-      val ext = if (j < 0) "" else n.substring(j + 1)
+      val n   = name
+      val k   = n.lastIndexOf('.')
+      val ext = if (k < 0) "" else n.substring(k + 1)
       // Locale.US -- not available on Scala.js ; rely on user setting JVM's locale appropriately...
       ext.toLowerCase()
     }
 
+    private def parentPath(p: String): String = {
+      val j = if (p.endsWith("/")) p.length - 1 else p.length
+      val i = p.lastIndexOf('/', j - 1) + 1
+      p.substring(0, i)
+    }
+
     def parentOption: Option[URI] = {
-      val p = uri.normalize().getPath
-      val j = if (p.endsWith("/")) p.length - 2 else p.length - 1
-      val i = p.lastIndexOf('/', j)
-      if (i < 0) None else {
-        val pp      = if (i == 0) "/" else p.substring(0, i)
+      val p   = uri.normalize().getPath
+      val pp  = parentPath(p)
+      if (pp.isEmpty) None else {
         val scheme  = uri.getScheme
         Some(new URI(scheme, pp, null))
       }
     }
 
-    def replaceExt (ext : String): URI = {
-      val p   = uri.normalize().getPath
-      val i     = p.lastIndexOf('/') + 1
-      val n     = p.substring(i)
-      val j     = n.lastIndexOf('.')
-      val base  = if (j < 0) n else n.substring(0, j)
-      val extP  = if (ext.startsWith(".")) ext else "." + ext
-      val pNew  = base + extP
+    def replaceExt(ext : String): URI = {
+      val p       = uri.normalize().getPath
+      val isDir   = p.endsWith("/")
+      val pp      = parentPath(p)
+      val extP    = if (ext.startsWith(".")) ext else "." + ext
+      val extD    = if (isDir) extP + "/" else extP
+      val nameD   = base + extD
+      val pNew    = pp + nameD
       val scheme  = uri.getScheme
       new URI(scheme, pNew, null)
     }
 
     def replaceName(name: String): URI = {
       val p       = uri.normalize().getPath
-      val i       = p.lastIndexOf('/') + 1
-      val pNew    = p.substring(0, i) + name
+      val isDir   = p.endsWith("/")
+      val pp      = parentPath(p)
+      val nameD   = if (isDir) name + "/" else name
+      val pNew    = pp + nameD
       val scheme  = uri.getScheme
       new URI(scheme, pNew, null)
     }
