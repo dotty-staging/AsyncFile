@@ -1,6 +1,6 @@
 # AsyncFile
 
-[![Build Status](https://travis-ci.org/Sciss/AsyncFile.svg?branch=main)](https://travis-ci.org/Sciss/AsyncFile)
+[![Build Status](https://github.com/Sciss/AsyncFile/workflows/Scala%20CI/badge.svg?branch=main)](https://github.com/Sciss/AsyncFile/actions?query=workflow%3A%22Scala+CI%22)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/de.sciss/asyncfile_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/de.sciss/asyncfile_2.13)
 
 ## statement
